@@ -9,18 +9,18 @@ import (
 )
 
 func TestSkip(t *testing.T) {
-	make_event := func() (context.Context, event.Event[string, int]) {
-		return context.TODO(), event.SKip[string, int]()
+	make_slot := func() (context.Context, event.Slot[int]) {
+		return context.TODO(), event.Skip[int]()
 	}
 
 	t.Run("emitted value is discarded if the channel is full", func(t *testing.T) {
-		ctx, e := make_event()
+		ctx, e := make_slot()
 
-		l, close := e.Listen("", 1)
+		l, close := e.Connect(1)
 		defer close()
 
-		e.Emit(ctx, "", 41)
-		e.Emit(ctx, "", 42)
+		e.Signal(ctx, 41)
+		e.Signal(ctx, 42)
 
 		v := <-l
 		select {
@@ -29,14 +29,14 @@ func TestSkip(t *testing.T) {
 		}
 		require.Equal(t, 41, v)
 	})
-	t.Run("emitted value is discarded if the receiver does not pending", func(t *testing.T) {
-		ctx, e := make_event()
+	t.Run("emitted value is discarded if the receiver is not in waiting", func(t *testing.T) {
+		ctx, e := make_slot()
 
-		l, close := e.Listen("", 0)
+		l, close := e.Connect(0)
 		defer close()
 
-		e.Emit(ctx, "", 41)
-		Delayed(func() { e.Emit(ctx, "", 42) })
+		e.Signal(ctx, 41)
+		Delayed(func() { e.Signal(ctx, 42) })
 
 		v := <-l
 		require.Equal(t, 42, v)

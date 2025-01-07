@@ -6,20 +6,18 @@ import (
 	"sync/atomic"
 )
 
-type sure[K comparable, V any] struct {
-	event[K, V]
+type sure[V any] struct {
+	slot[V]
 }
 
-func Sure[K comparable, V any]() Event[K, V] {
-	return &sure[K, V]{}
+func Sure[V any]() Slot[V] {
+	return &sure[V]{}
 }
 
-func (e *sure[K, V]) Listen(k K, n int) (<-chan V, func()) {
-	ls := e.load(k)
-
+func (e *sure[V]) Connect(n int) (<-chan V, func()) {
 	m := sync.Mutex{}
 	d := atomic.Bool{}
-	t := e.tickets.Add(1)
+	t := e.tc.Add(1)
 	c := make(chan V, n)
 	s := make(chan interface{})
 	a := func(ctx context.Context, v V) {
@@ -40,13 +38,13 @@ func (e *sure[K, V]) Listen(k K, n int) (<-chan V, func()) {
 		}
 	}
 
-	ls.Store(t, a)
+	e.ls.Store(t, a)
 	return c, func() {
 		if d.Swap(true) {
 			return
 		}
 		close(s)
-		ls.Delete(t)
+		e.ls.Delete(t)
 
 		m.Lock()
 		defer m.Unlock()

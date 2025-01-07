@@ -10,70 +10,70 @@ import (
 )
 
 func TestSure(t *testing.T) {
-	make_event := func() (context.Context, event.Event[string, int]) {
-		return context.TODO(), event.Sure[string, int]()
+	make_slot := func() (context.Context, event.Slot[int]) {
+		return context.TODO(), event.Sure[int]()
 	}
 
-	t.Run("emit is blocked until received", func(t *testing.T) {
-		ctx, e := make_event()
+	t.Run("signal is blocked until the value is received", func(t *testing.T) {
+		ctx, e := make_slot()
 
-		l, close := e.Listen("", 0)
+		l, close := e.Connect(0)
 		defer close()
 
 		t0 := time.Now()
 		v := 0
 		Delayed(func() { v = <-l })
 
-		e.Emit(ctx, "", 42)
+		e.Signal(ctx, 42)
 		dt := time.Since(t0)
 		require.GreaterOrEqual(t, dt, Delay)
 		require.Equal(t, 42, v)
 	})
-	t.Run("emit is unblocked by context", func(t *testing.T) {
-		ctx, e := make_event()
+	t.Run("signal is unblocked by context", func(t *testing.T) {
+		ctx, e := make_slot()
 		ctx, cancel := context.WithCancel(ctx)
 
-		_, close := e.Listen("", 0)
+		_, close := e.Connect(0)
 		defer close()
 
 		t0 := time.Now()
 		v := 36
 		Delayed(cancel)
 
-		e.Emit(ctx, "", 42)
+		e.Signal(ctx, 42)
 		dt := time.Since(t0)
 		require.GreaterOrEqual(t, dt, Delay)
 		require.Equal(t, 36, v)
 	})
-	t.Run("emit is unblocked by Listenion close", func(t *testing.T) {
-		ctx, e := make_event()
+	t.Run("signal is unblocked by closing the connection", func(t *testing.T) {
+		ctx, e := make_slot()
 
-		_, close := e.Listen("", 0)
+		_, close := e.Connect(0)
 		defer close()
 
 		t0 := time.Now()
 		v := 36
 		Delayed(close)
 
-		e.Emit(ctx, "", 42)
+		e.Signal(ctx, 42)
 		dt := time.Since(t0)
 		require.GreaterOrEqual(t, dt, Delay)
 		require.Equal(t, 36, v)
 	})
-	t.Run("no Listens no block", func(t *testing.T) {
-		_, e := make_event()
-		e.Emit(context.TODO(), "", 42)
+	t.Run("no connections no block", func(t *testing.T) {
+		_, s := make_slot()
+		s.Signal(context.TODO(), 42)
 	})
-	t.Run("closed Listenion does not block emit", func(t *testing.T) {
-		ctx, e := make_event()
+	t.Run("emit on closed connection is not blocked", func(t *testing.T) {
+		ctx, e := make_slot()
 
-		_, close := e.Listen("", 0)
+		_, close := e.Connect(0)
 		close()
 
 		t0 := time.Now()
 		Delayed(func() {})
 
-		e.Emit(ctx, "", 42)
+		e.Signal(ctx, 42)
 		dt := time.Since(t0)
 		require.Less(t, dt, Delay)
 	})

@@ -2,16 +2,12 @@ package event
 
 import (
 	"context"
-	"sync/atomic"
+
+	"github.com/lesomnus/event/internal/gm"
 )
 
 type Emitter[K comparable, V any] interface {
 	Emit(ctx context.Context, k K, v V)
-	WithKey(k K) KeyedEmitter[V]
-}
-
-type KeyedEmitter[V any] interface {
-	Emit(ctx context.Context, v V)
 }
 
 type Listener[K comparable, V any] interface {
@@ -23,40 +19,41 @@ type Event[K comparable, V any] interface {
 	Listener[K, V]
 }
 
-type handler[V any] func(ctx context.Context, v V)
-
 type event[K comparable, V any] struct {
-	slots   gm[K, *gm[int64, handler[V]]]
-	tickets atomic.Int64
+	ss   gm.Map[K, Slot[V]]
+	init func() Slot[V]
+}
+
+func New[K comparable, V any](init func() Slot[V]) Event[K, V] {
+	return &event[K, V]{init: Sure[V]}
 }
 
 func (e *event[K, V]) Emit(ctx context.Context, k K, v V) {
-	ls, ok := e.slots.Load(k)
+	s, ok := e.ss.Load(k)
 	if !ok {
 		return
 	}
-	ls.Range(func(_ int64, l handler[V]) bool {
-		l(ctx, v)
-		return true
-	})
+
+	s.Signal(ctx, v)
 }
 
-func (e *event[K, V]) WithKey(k K) KeyedEmitter[V] {
-	return WithKey(e, k)
+func (e *event[K, V]) Listen(k K, n int) (<-chan V, func()) {
+	s := e.WithKey(k)
+	return s.Connect(n)
 }
 
-func (e *event[K, V]) load(k K) *gm[int64, handler[V]] {
-	ls, ok := e.slots.Load(k)
+func (e *event[K, V]) WithKey(k K) Slot[V] {
+	s, ok := e.ss.Load(k)
 	if ok {
-		return ls
+		return s
 	}
 
-	ls_ := &gm[int64, handler[V]]{}
-	ls, ok = e.slots.LoadOrStore(k, ls_)
+	s_ := e.init()
+	s, ok = e.ss.LoadOrStore(k, s_)
 	if ok {
-		return ls
+		return s
 	}
-	return ls_
+	return s_
 }
 
 type keyed[K comparable, V any] struct {
@@ -64,10 +61,14 @@ type keyed[K comparable, V any] struct {
 	k K
 }
 
-func WithKey[K comparable, V any](e Emitter[K, V], k K) KeyedEmitter[V] {
+func WithKey[K comparable, V any](e Emitter[K, V], k K) Signaler[V] {
+	if v, ok := e.(interface{ WithKey(k K) Slot[V] }); ok {
+		return v.WithKey(k)
+	}
+
 	return &keyed[K, V]{e, k}
 }
 
-func (e *keyed[K, V]) Emit(ctx context.Context, v V) {
+func (e *keyed[K, V]) Signal(ctx context.Context, v V) {
 	e.e.Emit(ctx, e.k, v)
 }

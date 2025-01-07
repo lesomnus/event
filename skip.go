@@ -6,20 +6,18 @@ import (
 	"sync/atomic"
 )
 
-type skip[K comparable, V any] struct {
-	event[K, V]
+type skip[V any] struct {
+	slot[V]
 }
 
-func SKip[K comparable, V any]() Event[K, V] {
-	return &skip[K, V]{}
+func Skip[V any]() Slot[V] {
+	return &skip[V]{}
 }
 
-func (e *skip[K, V]) Listen(k K, n int) (<-chan V, func()) {
-	ls := e.load(k)
-
+func (e *skip[V]) Connect(n int) (<-chan V, func()) {
 	m := sync.Mutex{}
 	d := atomic.Bool{}
-	t := e.tickets.Add(1)
+	t := e.tc.Add(1)
 	c := make(chan V, n)
 	a := func(ctx context.Context, v V) {
 		m.Lock()
@@ -34,12 +32,12 @@ func (e *skip[K, V]) Listen(k K, n int) (<-chan V, func()) {
 		}
 	}
 
-	ls.Store(t, a)
+	e.ls.Store(t, a)
 	return c, func() {
 		if d.Swap(true) {
 			return
 		}
-		ls.Delete(t)
+		e.ls.Delete(t)
 
 		m.Lock()
 		defer m.Unlock()
